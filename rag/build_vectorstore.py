@@ -48,7 +48,7 @@ class PolicyVectorStore:
         
         print(f"ChromaDB 컬렉션 '{self.collection_name}'이 생성되었습니다.")
         
-    def load_policies(self, data_dir: str = "data/processed"):
+    def load_policies(self, data_dir: str = "../data/processed"):
         """정책 데이터를 로드합니다."""
         policies = []
         

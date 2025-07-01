@@ -9,6 +9,7 @@ import json
 import time
 import os
 import re
+from tqdm import tqdm
 
 BASE_LIST_URL = "https://youth.seoul.go.kr/infoData/plcyInfo/list.do"
 BASE_VIEW_URL = "https://youth.seoul.go.kr/infoData/plcyInfo/view.do"
@@ -25,7 +26,19 @@ HEADERS = {
 SAVE_PATH = "data/processed"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
-def get_policy_ids_selenium(page=1):
+CATEGORIES = {
+    "전체": "",
+    "일자리": "023010",
+    "주거": "023020",
+    "교육": "023030",
+    "복지": "023040",
+    "참여": "023050",
+    "문화": "023060",
+    # 필요시 더 추가
+}
+MAX_PAGES_PER_CATEGORY = 100
+
+def get_policy_ids_selenium(category_code, page=1):
     options = webdriver.ChromeOptions()
     # options.add_argument("--headless=new")  # 디버깅을 위해 주석 처리
     options.add_argument("--disable-gpu")
@@ -42,7 +55,7 @@ def get_policy_ids_selenium(page=1):
     driver = webdriver.Chrome(service=service, options=options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
-    url = f"{BASE_LIST_URL}?sc_plcyFldCd=023010&pageIndex={page}&orderBy=regYmd+desc"
+    url = f"{BASE_LIST_URL}?sc_plcyFldCd={category_code}&pageIndex={page}&orderBy=regYmd+desc"
     print(f"🔗 접속 URL: {url}")
     driver.get(url)
     
@@ -131,33 +144,40 @@ def parse_detail(policy_id):
 
 def save_json(data):
     fname = os.path.join(SAVE_PATH, f"{data['plcyBizId']}.json")
-    with open(fname, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    if os.path.exists(fname):
+        return  # 이미 있으면 건너뜀
+    try:
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"✅ 저장 완료: {fname}")
+    except Exception as e:
+        print(f"❌ 저장 실패: {fname}, 에러: {e}")
+
+def save_id_list(id_list, cat_name):
+    with open(f"policy_ids_{cat_name}.json", "w", encoding="utf-8") as f:
+        json.dump(list(id_list), f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    all_ids = []
-    max_pages = 1  # 디버깅을 위해 1페이지만 시도
-    
-    for page in range(1, max_pages + 1):
-        print(f"📄 {page}페이지 정책ID 수집 중...")
-        ids = get_policy_ids_selenium(page)
-        print(f"🔹 수집된 ID 수: {len(ids)}")
-        if not ids:
-            print("❌ ID를 찾을 수 없습니다. HTML 파일을 확인해주세요.")
-            break
-        all_ids.extend(ids)
-        time.sleep(1)
-
-    if all_ids:
-        print(f"🔎 총 {len(all_ids)}건 수집 시작...")
-        for pid in all_ids:
-            print(f"▶ {pid} 수집 중...")
-            try:
-                detail = parse_detail(pid)
-                save_json(detail)
-                print(f"✅ 저장 완료: {detail['title']}")
-            except Exception as e:
-                print(f"❌ 에러 발생: {e}")
+    for cat_name, cat_code in CATEGORIES.items():
+        print(f"\n=== [{cat_name}] 분야 크롤링 시작 ===")
+        all_ids = set()
+        for page in tqdm(range(1, MAX_PAGES_PER_CATEGORY + 1), desc=f"{cat_name} 페이지"):
+            ids = get_policy_ids_selenium(cat_code, page)
+            if not ids:
+                print(f"🚩 {cat_name} {page}페이지에 정책이 없습니다. 다음 카테고리로 이동.")
+                break
+            for pid in ids:
+                if pid not in all_ids:
+                    all_ids.add(pid)
+                    try:
+                        detail = parse_detail(pid)
+                        save_json(detail)
+                    except Exception as e:
+                        print(f"❌ {pid} 상세 수집 에러: {e}")
+            # 100건마다 정책 ID 목록 저장
+            if len(all_ids) % 100 == 0:
+                save_id_list(all_ids, cat_name)
             time.sleep(1)
-    else:
-        print("❌ 수집할 ID가 없습니다.")
+        # 카테고리 끝날 때마다 ID 목록 저장
+        save_id_list(all_ids, cat_name)
+        print(f"✅ {cat_name} 분야 정책 {len(all_ids)}건 저장 완료")

@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 import os
 import sys
 from dotenv import load_dotenv
+import time
 
 # 프로젝트 루트 경로
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +40,18 @@ vectorstore = None
 embedding_model = None
 openai_client = None
 
+CATEGORIES = {
+    "전체": "",  # 전체 정책 코드(필요시)
+    "일자리": "023010",
+    "주거": "023020",
+    "교육": "023030",
+    "복지": "023040",
+    "참여": "023050",
+    "문화": "023060",
+    # 추가로 더 많은 코드가 있으면 모두 넣으세요!
+}
+MAX_PAGES_PER_CATEGORY = 100  # 충분히 크게
+
 class SearchRequest(BaseModel):
     query: str
     k: int = 5
@@ -70,7 +83,7 @@ def load_vectorstore():
         
         # 벡터스토어 로드
         vectorstore = Chroma(
-            persist_directory="vectorstore",
+            persist_directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), "rag", "vectorstore"),
             embedding_function=embedding_model
         )
         
@@ -320,6 +333,36 @@ async def get_policy_detail(policy_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"정책 정보 로드 중 오류 발생: {str(e)}")
 
+def get_policy_ids_selenium(category_code, page=1):
+    # ... (기존 함수에서 BASE_LIST_URL, PARAMS, url 부분만 아래처럼 수정) ...
+    url = f"{BASE_LIST_URL}?sc_plcyFldCd={category_code}&pageIndex={page}&orderBy=regYmd+desc"
+    # ... (나머지 코드는 동일) ...
+
 if __name__ == "__main__":
+    all_ids = set()
+    for cat_name, cat_code in CATEGORIES.items():
+        print(f"\n=== [{cat_name}] 분야 크롤링 시작 ===")
+        for page in range(1, MAX_PAGES_PER_CATEGORY + 1):
+            print(f"📄 {cat_name} {page}페이지 정책ID 수집 중...")
+            ids = get_policy_ids_selenium(cat_code, page)
+            print(f"🔹 수집된 ID 수: {len(ids)}")
+            if not ids:
+                print("❌ ID를 찾을 수 없습니다. HTML 파일을 확인해주세요.")
+                break
+            all_ids.update(ids)
+            time.sleep(1)
+
+    print(f"\n🔎 총 {len(all_ids)}건 정책 상세정보 수집 시작...")
+    for idx, pid in enumerate(all_ids, 1):
+        print(f"▶ ({idx}/{len(all_ids)}) {pid} 수집 중...")
+        try:
+            detail = parse_detail(pid)
+            save_json(detail)
+            print(f"✅ 저장 완료: {detail['title']}")
+        except Exception as e:
+            print(f"❌ 에러 발생: {e}")
+        time.sleep(1)
+    print("\n🎉 모든 정책 데이터 수집 완료!")
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 

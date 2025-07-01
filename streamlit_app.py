@@ -338,25 +338,19 @@ def main():
             
             else:
                 answer_result = generate_answer(query, k_results)
+                # 1. 사람이 설명하듯 자연어로 답변 먼저 출력
                 st.markdown(f"""
                 <div class="answer-box">
                     <h3 style="color:#1e90ff;">AI 답변</h3>
                     <div style="font-size:1.08rem;">{answer_result.get('answer', '답변을 생성할 수 없습니다.')}</div>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # 참고한 정책 표시
+                # 2. 그 아래에 관련 정책 카드(지금처럼) 나열
                 sources = answer_result.get("sources", [])
                 if sources:
-                    st.markdown("#### 참고한 정책")
+                    st.markdown("#### 관련 정책")
                     for i, source in enumerate(sources, 1):
-                        st.markdown(f"""
-                        <div class="source-item">
-                            <b>{i}. {source.get('title', '제목 없음')}</b><br>
-                            주관기관: {source.get('agency', '정보 없음')}<br>
-                            <a href="{source.get('page_url', '')}" target="_blank">상세 정보 보기</a>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        display_policy_card(source, i)
     
     # 하단 정보
     st.markdown("---")

@@ -154,7 +154,7 @@ URL: {metadata['url']}
 
         try:
             response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "당신은 서울시 청년 정책 전문 상담사입니다."},
                     {"role": "user", "content": prompt}
